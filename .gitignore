@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+
+# Cloudflare Wrangler
+.wrangler/
+backend/.wrangler/
+
+# Local environment / secrets
+.dev.vars
+ .dev.vars
+backend/.dev.vars
+backend/ .dev.vars
+.env
+.env.*
+!.env.example
+!.dev.vars.example
+
+# Personal / test images
+cousin.jpg
+cousins.jpg
+
+# Logs & OS files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

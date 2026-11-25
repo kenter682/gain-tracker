@@ -1,0 +1,7 @@
+# Cloudflare Wrangler local environment variables
+# Copy this file to .dev.vars and fill in your values for local development.
+# In production, set these as Worker Secrets in Cloudflare Dashboard or via `wrangler secret put`.
+
+GEMINI_API_KEY=your_gemini_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+AUTH_TOKEN=your_auth_token_here

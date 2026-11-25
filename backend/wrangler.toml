@@ -1,0 +1,19 @@
+name = "gain-tracker-backend"
+main = "src/index.ts"
+compatibility_date = "2024-05-29"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gain-tracker-db"
+database_id = "28e53493-2a93-4e6f-b327-1a85956b1832"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "gain-tracker-r2"
+preview_bucket_name = "gain-tracker-r2-local"
+
+[assets]
+directory = "../frontend/dist"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "single-page-application"
