@@ -56,6 +56,20 @@ export default function App() {
         shape: {
           borderRadius: 12,
         },
+        components: {
+          MuiChip: {
+            styleOverrides: {
+              colorPrimary: {
+                '&.MuiChip-filled': {
+                  backgroundColor: '#ea580c',
+                  '&:hover, &:focus, &.Mui-focusVisible': {
+                    backgroundColor: '#ea580c',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
     []
   );

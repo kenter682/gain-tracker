@@ -17,6 +17,7 @@ import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import SaveIcon from '@mui/icons-material/Save';
+import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -26,7 +27,14 @@ import {
   getTodayDateString,
   resizeImageTo1280x960,
 } from '../utils/image';
-import { parseNaturalLanguageMeal } from '../utils/naturalLanguage';
+import {
+  ParsedDishItem,
+  parseNaturalLanguageMeal,
+} from '../utils/naturalLanguage';
+
+type AddedNaturalItem = ParsedDishItem & {
+  dish: Dish & { id: string };
+};
 
 interface RecordTabProps {
   templates: MealTemplate[];
@@ -48,7 +56,8 @@ export default function RecordTab({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [naturalText, setNaturalText] = useState<string>('');
-  const [showNaturalInput, setShowNaturalInput] = useState<boolean>(false);
+  const [addedNaturalItems, setAddedNaturalItems] = useState<AddedNaturalItem[]>([]);
+  const [showCommentInput, setShowCommentInput] = useState<boolean>(false);
   const [comment, setComment] = useState<string>('');
   const [loggedDate, setLoggedDate] = useState<string>(getTodayDateString());
   const [loggedTime, setLoggedTime] = useState<string>(getCurrentTimeString());
@@ -94,9 +103,37 @@ export default function RecordTab({
     );
   };
 
+  const handleAddNaturalItems = () => {
+    if (!naturalText.trim() || !parsedMeal || parsedMeal.items.length === 0) {
+      return;
+    }
+
+    const newItems = parsedMeal.items.map((item) => ({
+      ...item,
+      dish: {
+        ...item.dish,
+        id: crypto.randomUUID(),
+      },
+    }));
+
+    setAddedNaturalItems((prev) => [...prev, ...newItems]);
+    if (parsedMeal.loggedDate) {
+      setLoggedDate(parsedMeal.loggedDate);
+    }
+    if (parsedMeal.loggedTime) {
+      setLoggedTime(parsedMeal.loggedTime);
+    }
+    setNaturalText('');
+  };
+
+  const handleRemoveNaturalItem = (dishId: string) => {
+    setAddedNaturalItems((prev) => prev.filter((item) => item.dish.id !== dishId));
+  };
+
   const canSave =
     Boolean(imageBlob) ||
     selectedTemplateIds.length > 0 ||
+    addedNaturalItems.length > 0 ||
     naturalText.trim().length > 0 ||
     comment.trim().length > 0;
 
@@ -152,6 +189,17 @@ export default function RecordTab({
         });
       });
 
+      addedNaturalItems.forEach((item) => {
+        allDishes.push({
+          ...item.dish,
+          id: crypto.randomUUID(),
+        });
+        totalCalories += Number(item.dish.calories) || 0;
+        totalProtein += Number(item.dish.protein) || 0;
+        totalCarbs += Number(item.dish.carbs) || 0;
+        totalFat += Number(item.dish.fat) || 0;
+      });
+
       if (parsedMeal) {
         parsedMeal.items.forEach((item) => {
           allDishes.push({
@@ -197,9 +245,10 @@ export default function RecordTab({
 
       handleClearImage();
       setSelectedTemplateIds([]);
+      setAddedNaturalItems([]);
       setNaturalText('');
-      setShowNaturalInput(false);
       setComment('');
+      setShowCommentInput(false);
       setLoggedDate(getTodayDateString());
       setLoggedTime(getCurrentTimeString());
       onNotify('記録を保存しました', 'success');
@@ -350,40 +399,137 @@ export default function RecordTab({
         </CardContent>
       </Card>
 
-      {/* Comment & DateTime Card */}
+      {/* Natural Language Input Card */}
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
         <CardContent>
-          <Stack spacing={2}>
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+            言葉で追加
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
             <TextField
-              label="コメント"
-              placeholder="メモや食べたものを入力"
-              multiline
-              minRows={2}
+              size="small"
               fullWidth
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              placeholder="例: プロテインとおにぎり2個、昨日の夜にラーメン"
+              value={naturalText}
+              onChange={(e) => setNaturalText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  if (
+                    naturalText.trim() &&
+                    parsedMeal &&
+                    parsedMeal.items.length > 0 &&
+                    !isSaving &&
+                    !isProcessingImage
+                  ) {
+                    handleAddNaturalItems();
+                  }
+                }
+              }}
             />
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              disabled={
+                !naturalText.trim() ||
+                !parsedMeal ||
+                parsedMeal.items.length === 0 ||
+                isSaving ||
+                isProcessingImage
+              }
+              onClick={handleAddNaturalItems}
+              sx={{ whiteSpace: 'nowrap', px: 2, borderRadius: 2, height: 40 }}
+            >
+              追加
+            </Button>
+          </Stack>
 
-            <Stack direction="row" spacing={1.5}>
-              <TextField
-                label="日付"
-                type="date"
-                fullWidth
-                size="small"
-                value={loggedDate}
-                onChange={(e) => setLoggedDate(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-              <TextField
-                label="時刻"
-                type="time"
-                fullWidth
-                size="small"
-                value={loggedTime}
-                onChange={(e) => setLoggedTime(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
-              />
-            </Stack>
+          {parsedMeal &&
+            (parsedMeal.items.length > 0 ||
+              parsedMeal.loggedDate ||
+              parsedMeal.loggedTime) && (
+              <Box sx={{ mt: 1.5 }}>
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{ flexWrap: 'wrap', gap: 0.75 }}
+                >
+                  {(parsedMeal.loggedDate || parsedMeal.loggedTime) && (
+                    <Chip
+                      size="small"
+                      icon={<ScheduleIcon />}
+                      label={`${parsedMeal.loggedDate || loggedDate} ${parsedMeal.loggedTime || loggedTime}`}
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  )}
+                  {parsedMeal.items.map((item, idx) => (
+                    <Chip
+                      key={`nl-preview-${idx}-${item.dish.name}`}
+                      size="small"
+                      label={item.dish.name}
+                      icon={item.matchedTemplateName ? <CheckIcon /> : undefined}
+                      color={item.matchedTemplateName ? 'primary' : 'default'}
+                      variant={item.matchedTemplateName ? 'filled' : 'outlined'}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+          {addedNaturalItems.length > 0 && (
+            <Box sx={{ mt: 1.5 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: 'block', mb: 0.75 }}
+              >
+                追加済み ({addedNaturalItems.length}件)
+              </Typography>
+              <Stack
+                direction="row"
+                spacing={0.75}
+                sx={{ flexWrap: 'wrap', gap: 0.75 }}
+              >
+                {addedNaturalItems.map((item) => (
+                  <Chip
+                    key={item.dish.id}
+                    size="small"
+                    label={item.dish.name}
+                    icon={item.matchedTemplateName ? <CheckIcon /> : undefined}
+                    color={item.matchedTemplateName ? 'primary' : 'default'}
+                    variant={item.matchedTemplateName ? 'filled' : 'outlined'}
+                    onDelete={() => handleRemoveNaturalItem(item.dish.id)}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* DateTime Card */}
+      <Card variant="outlined" sx={{ borderRadius: 3 }}>
+        <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+          <Stack direction="row" spacing={1.5}>
+            <TextField
+              label="日付"
+              type="date"
+              fullWidth
+              size="small"
+              value={loggedDate}
+              onChange={(e) => setLoggedDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <TextField
+              label="時刻"
+              type="time"
+              fullWidth
+              size="small"
+              value={loggedTime}
+              onChange={(e) => setLoggedTime(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
           </Stack>
         </CardContent>
       </Card>
@@ -407,72 +553,31 @@ export default function RecordTab({
         {isSaving ? '保存中...' : '記録する'}
       </Button>
 
-      {/* Subtle Collapsible Natural Language Input */}
+      {/* Subtle Collapsible Comment Input */}
       <Box sx={{ textAlign: 'center' }}>
         <Button
           size="small"
           color="inherit"
-          onClick={() => setShowNaturalInput((prev) => !prev)}
-          endIcon={showNaturalInput ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          onClick={() => setShowCommentInput((prev) => !prev)}
+          endIcon={showCommentInput ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           sx={{ color: 'text.secondary', fontSize: '0.8rem', fontWeight: 500 }}
         >
-          言葉で追加
+          コメント{comment.trim() ? '（入力あり）' : ''}
         </Button>
 
-        <Collapse in={showNaturalInput}>
+        <Collapse in={showCommentInput}>
           <Card variant="outlined" sx={{ mt: 1, borderRadius: 3, textAlign: 'left' }}>
             <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  placeholder="例: プロテインとおにぎり2個、昨日の夜にラーメン"
-                  value={naturalText}
-                  onChange={(e) => setNaturalText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      if (naturalText.trim() && !isSaving && !isProcessingImage) {
-                        handleSave();
-                      }
-                    }
-                  }}
-                />
-                <Button
-                  variant="outlined"
-                  disabled={!naturalText.trim() || isSaving || isProcessingImage}
-                  onClick={handleSave}
-                  sx={{ whiteSpace: 'nowrap', px: 2, borderRadius: 2, height: 40 }}
-                >
-                  {isSaving ? '保存中' : '記録'}
-                </Button>
-              </Stack>
-
-              {parsedMeal && (parsedMeal.items.length > 0 || parsedMeal.loggedDate || parsedMeal.loggedTime) && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
-                    {(parsedMeal.loggedDate || parsedMeal.loggedTime) && (
-                      <Chip
-                        size="small"
-                        icon={<ScheduleIcon />}
-                        label={`${parsedMeal.loggedDate || loggedDate} ${parsedMeal.loggedTime || loggedTime}`}
-                        color="secondary"
-                        variant="outlined"
-                      />
-                    )}
-                    {parsedMeal.items.map((item, idx) => (
-                      <Chip
-                        key={`nl-${idx}-${item.dish.name}`}
-                        size="small"
-                        label={item.dish.name}
-                        icon={item.matchedTemplateName ? <CheckIcon /> : undefined}
-                        color={item.matchedTemplateName ? 'primary' : 'default'}
-                        variant={item.matchedTemplateName ? 'filled' : 'outlined'}
-                      />
-                    ))}
-                  </Stack>
-                </Box>
-              )}
+              <TextField
+                label="コメント"
+                placeholder="メモや食べたものを入力"
+                multiline
+                minRows={2}
+                fullWidth
+                size="small"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
             </CardContent>
           </Card>
         </Collapse>

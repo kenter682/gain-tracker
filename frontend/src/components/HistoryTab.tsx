@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -20,11 +20,15 @@ import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
+import CheckIcon from '@mui/icons-material/Check';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import { Dish, MealRecord, MealTemplate } from '../types';
 import { formatTimelineDateTime, resizeImageTo1280x960 } from '../utils/image';
+import { parseNaturalLanguageMeal } from '../utils/naturalLanguage';
 
 export interface MealUpdatePayload {
   name: string;
@@ -78,11 +82,17 @@ export default function HistoryTab({
   const [editImageBlob, setEditImageBlob] = useState<Blob | null>(null);
   const [editPreviewUrl, setEditPreviewUrl] = useState<string | null>(null);
   const [editDishes, setEditDishes] = useState<Dish[]>([]);
+  const [editNaturalText, setEditNaturalText] = useState<string>('');
   const [editComment, setEditComment] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
   const [editTime, setEditTime] = useState<string>('');
   const [isProcessingImage, setIsProcessingImage] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  const parsedEditMeal = useMemo(
+    () => parseNaturalLanguageMeal(editNaturalText, templates),
+    [editNaturalText, templates]
+  );
 
   // Delete confirmation inside edit flow
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<boolean>(false);
@@ -111,6 +121,7 @@ export default function HistoryTab({
     setEditImageBlob(null);
     setEditPreviewUrl(null);
     setEditDishes(item.dishes ? item.dishes.map((d) => ({ ...d })) : []);
+    setEditNaturalText('');
     setEditComment(item.comment ?? (showTitle ? item.name : ''));
     setEditDate(item.logged_date);
     setEditTime(item.logged_time);
@@ -127,6 +138,7 @@ export default function HistoryTab({
     setEditImageBlob(null);
     setEditPreviewUrl(null);
     setEditDishes([]);
+    setEditNaturalText('');
     setEditComment('');
     setEditDate('');
     setEditTime('');
@@ -179,6 +191,26 @@ export default function HistoryTab({
     setEditDishes((prev) => [...prev, ...newDishes]);
   };
 
+  const handleAddNaturalDishes = () => {
+    if (!editNaturalText.trim() || !parsedEditMeal || parsedEditMeal.items.length === 0) {
+      return;
+    }
+
+    const newDishes: Dish[] = parsedEditMeal.items.map((item) => ({
+      ...item.dish,
+      id: crypto.randomUUID(),
+    }));
+    setEditDishes((prev) => [...prev, ...newDishes]);
+
+    if (parsedEditMeal.loggedDate) {
+      setEditDate(parsedEditMeal.loggedDate);
+    }
+    if (parsedEditMeal.loggedTime) {
+      setEditTime(parsedEditMeal.loggedTime);
+    }
+    setEditNaturalText('');
+  };
+
   const canSaveEdit =
     Boolean(editingItem) &&
     Boolean(editDate) &&
@@ -186,6 +218,7 @@ export default function HistoryTab({
     (Boolean(editImageBlob) ||
       Boolean(editImageKey) ||
       editDishes.length > 0 ||
+      editNaturalText.trim().length > 0 ||
       editComment.trim().length > 0);
 
   const handleSaveEdit = async () => {
@@ -213,21 +246,34 @@ export default function HistoryTab({
         finalImageKey = uploadData.image_key || null;
       }
 
+      const finalDishes: Dish[] = [...editDishes];
+      if (parsedEditMeal) {
+        parsedEditMeal.items.forEach((item) => {
+          finalDishes.push({
+            ...item.dish,
+            id: crypto.randomUUID(),
+          });
+        });
+      }
+
       let totalCalories = 0;
       let totalProtein = 0;
       let totalCarbs = 0;
       let totalFat = 0;
 
-      editDishes.forEach((d) => {
+      finalDishes.forEach((d) => {
         totalCalories += Number(d.calories) || 0;
         totalProtein += Number(d.protein) || 0;
         totalCarbs += Number(d.carbs) || 0;
         totalFat += Number(d.fat) || 0;
       });
 
+      const trimmedNatural = editNaturalText.trim();
       const trimmedComment = editComment.trim();
-      const dishSummary = editDishes.map((d) => d.name).join('・');
-      const mealName = dishSummary || trimmedComment || '食事';
+      const dishSummary = finalDishes.map((d) => d.name).join('・');
+      const mealName = dishSummary || trimmedNatural || trimmedComment || '食事';
+      const finalDate = parsedEditMeal?.loggedDate || editDate;
+      const finalTime = parsedEditMeal?.loggedTime || editTime;
 
       await onUpdate(editingItem.id, {
         name: mealName,
@@ -236,11 +282,13 @@ export default function HistoryTab({
         carbs: Math.round(totalCarbs * 10) / 10,
         fat: Math.round(totalFat * 10) / 10,
         image_key: finalImageKey,
-        logged_date: editDate,
-        logged_time: editTime,
+        logged_date: finalDate,
+        logged_time: finalTime,
         meal_type: editingItem.meal_type || 'meal',
-        dishes: editDishes.length > 0 ? editDishes : null,
-        comment: trimmedComment || null,
+        dishes: finalDishes.length > 0 ? finalDishes : null,
+        comment:
+          trimmedComment ||
+          (finalDishes.length === 0 && trimmedNatural ? trimmedNatural : null),
       });
 
       if (editPreviewUrl) {
@@ -251,6 +299,7 @@ export default function HistoryTab({
       setEditImageBlob(null);
       setEditPreviewUrl(null);
       setEditDishes([]);
+      setEditNaturalText('');
       setEditComment('');
       setEditDate('');
       setEditTime('');
@@ -275,6 +324,7 @@ export default function HistoryTab({
       setEditImageBlob(null);
       setEditPreviewUrl(null);
       setEditDishes([]);
+      setEditNaturalText('');
       setEditComment('');
       setEditDate('');
       setEditTime('');
@@ -654,6 +704,86 @@ export default function HistoryTab({
                 )}
               </Box>
             )}
+
+            {/* Natural Language Input */}
+            <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+                言葉で追加
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="例: プロテインとおにぎり2個"
+                  value={editNaturalText}
+                  onChange={(e) => setEditNaturalText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      if (
+                        editNaturalText.trim() &&
+                        parsedEditMeal &&
+                        parsedEditMeal.items.length > 0 &&
+                        !isSaving &&
+                        !isProcessingImage &&
+                        !isDeleting
+                      ) {
+                        handleAddNaturalDishes();
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  disabled={
+                    !editNaturalText.trim() ||
+                    !parsedEditMeal ||
+                    parsedEditMeal.items.length === 0 ||
+                    isSaving ||
+                    isProcessingImage ||
+                    isDeleting
+                  }
+                  onClick={handleAddNaturalDishes}
+                  sx={{ whiteSpace: 'nowrap', px: 2, borderRadius: 2, height: 40 }}
+                >
+                  追加
+                </Button>
+              </Stack>
+
+              {parsedEditMeal &&
+                (parsedEditMeal.items.length > 0 ||
+                  parsedEditMeal.loggedDate ||
+                  parsedEditMeal.loggedTime) && (
+                  <Box sx={{ mt: 1.25 }}>
+                    <Stack
+                      direction="row"
+                      spacing={0.75}
+                      sx={{ flexWrap: 'wrap', gap: 0.75 }}
+                    >
+                      {(parsedEditMeal.loggedDate || parsedEditMeal.loggedTime) && (
+                        <Chip
+                          size="small"
+                          icon={<ScheduleIcon />}
+                          label={`${parsedEditMeal.loggedDate || editDate} ${parsedEditMeal.loggedTime || editTime}`}
+                          color="secondary"
+                          variant="outlined"
+                        />
+                      )}
+                      {parsedEditMeal.items.map((item, idx) => (
+                        <Chip
+                          key={`edit-nl-preview-${idx}-${item.dish.name}`}
+                          size="small"
+                          label={item.dish.name}
+                          icon={item.matchedTemplateName ? <CheckIcon /> : undefined}
+                          color={item.matchedTemplateName ? 'primary' : 'default'}
+                          variant={item.matchedTemplateName ? 'filled' : 'outlined'}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+            </Box>
 
             {/* Comment */}
             <TextField
