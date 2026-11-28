@@ -129,57 +129,8 @@ function extractDateTime(text: string): {
   return { remainingText: work, loggedDate, loggedTime };
 }
 
-const KANJI_NUM_MAP: Record<string, number> = {
-  一: 1,
-  二: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-  十: 10,
-};
-
 function parseQuantity(chunk: string): { cleanName: string; quantity: number } {
   const normalized = toHalfWidth(chunk).trim();
-
-  // Check "半分"
-  if (/半分$/.test(normalized)) {
-    const clean = normalized.replace(/\s*半分$/, '').trim();
-    if (clean) return { cleanName: clean, quantity: 0.5 };
-  }
-
-  // Check multiplication suffix: e.g. "おにぎり ×2", "プロテイン x2", "おにぎり * 2"
-  const multMatch = normalized.match(/^(.+?)\s*[×xX*]\s*(\d+(?:\.\d+)?)$/);
-  if (multMatch) {
-    const qty = Number(multMatch[2]);
-    if (qty > 0) {
-      return { cleanName: multMatch[1].trim(), quantity: qty };
-    }
-  }
-
-  // Check Japanese counter suffix: e.g. "おにぎり2個", "プロテイン 2杯", "ごはん100g 2つ"
-  const unitMatch = normalized.match(
-    /^(.+?)\s*(\d+(?:\.\d+)?)\s*(個|つ|本|杯|枚|皿|食|袋|パック|切れ|倍)$/
-  );
-  if (unitMatch) {
-    const qty = Number(unitMatch[2]);
-    if (qty > 0) {
-      return { cleanName: unitMatch[1].trim(), quantity: qty };
-    }
-  }
-
-  // Check Kanji counter suffix: e.g. "おにぎり二個", "おにぎり二つ"
-  const kanjiMatch = normalized.match(/^(.+?)\s*([一二三四五六七八九十])\s*(個|つ|本|杯|枚|皿|食|倍)$/);
-  if (kanjiMatch) {
-    const qty = KANJI_NUM_MAP[kanjiMatch[2]];
-    if (qty > 0) {
-      return { cleanName: kanjiMatch[1].trim(), quantity: qty };
-    }
-  }
-
   return { cleanName: normalized, quantity: 1 };
 }
 
